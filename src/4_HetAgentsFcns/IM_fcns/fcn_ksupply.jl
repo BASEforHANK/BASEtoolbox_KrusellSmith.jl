@@ -1,81 +1,114 @@
 @doc raw"""
-    Ksupply(RB_guess,R_guess,w_guess,profit_guess,n_par,m_par)
+    Ksupply(r_guess::Float64,n_par::NumericalParameters,m_par::ModelParameters,Vm::AbstractArray,inc::AbstractArray)
 
 Calculate the aggregate savings when households face idiosyncratic income risk.
 
-Idiosyncratic state is tuple ``(m,k,y)``, where
-``m``: liquid assets, ``k``: illiquid assets, ``y``: labor income
+Idiosyncratic state is tuple ``(m,y)``, where
+``m``: liquid assets, ``y``: labor income
 
 # Arguments
-- `R_guess`: real interest rate illiquid assets
-- `RB_guess`: nominal rate on liquid assets
-- `w_guess`: wages
-- `profit_guess`: profits
+- `r_guess`: real interest rate illiquid assets
 - `n_par::NumericalParameters`
 - `m_par::ModelParameters`
+- `Vm::AbstractArray`: marginal value of liquid assets
+- `distr_guess::AbstractArray`: initial guess for stationary distribution `distr_guess[m,y]
+- `inc::AbstractArray`: income array
 
 # Returns
-- `K`,`B`: aggregate saving in illiquid (`K`) and liquid (`B`) assets
--  `TransitionMat`,`TransitionMat_a`,`TransitionMat_n`: `sparse` transition matrices
-    (average, with [`a`] or without [`n`] adjustment of illiquid asset)
+- `K`: aggregate savings (`K`)
+-  `TransitionMat`: transition matrices
 - `distr`: ergodic steady state of `TransitionMat`
-- `c_a_star`,`m_a_star`,`k_a_star`,`c_n_star`,`m_n_star`: optimal policies for
-    consumption [`c`], liquid [`m`] and illiquid [`k`] asset, with [`a`] or
-    without [`n`] adjustment of illiquid asset
-- `V_m`,`V_k`: marginal value functions
+- `c_star`,`m_star`: optimal policies for
+    consumption [`c`], assets [`m`]
+- `V_m`: marginal value function
 """
-function Ksupply(r_guess::Float64, n_par::NumericalParameters,
-    m_par::ModelParameters, Vm::AbstractArray, inc::AbstractArray)
+function Ksupply(
+    r_guess::Float64,
+    n_par::NumericalParameters,
+    m_par::ModelParameters,
+    Vm::AbstractArray,
+    distr_guess::AbstractArray,
+    inc::AbstractArray,
+)
 
     #   initialize distance variables
-    dist                = 9999.0
+    dist = 9999.0
+    dist1 = dist
+    dist2 = dist
 
     #----------------------------------------------------------------------------
     # Iterate over consumption policies
     #----------------------------------------------------------------------------
-    count               = 0
-    n                   = size(Vm)
-    # containers for policies
-    m_n_star            = zeros(n)
-    c_n_star            = zeros(n)
+    count = 0
+    # containers for policies, marginal value functions etc.
+    m_n_star = similar(Vm)
+    c_n_star = similar(Vm)
+    EVm = similar(Vm)
+    Vm_new = similar(Vm)
+    iVm = invmutil(Vm, m_par)
+    iVm_new = similar(iVm)
+    EMU = similar(EVm)
+    c_star_n = similar(EVm)
+    m_star_n = similar(EVm)
+    D = similar(EVm)
 
     while dist > n_par.ϵ && count < 10000 # Iterate consumption policies until converegence
-        count           = count + 1
+        count = count + 1
         # Take expectations for labor income change
-        EVm             = r_guess .* Vm * n_par.Π'
+        EVm = r_guess .* Vm * n_par.Π'
 
         # Policy update step
-        c_n_star, m_n_star =
-            EGM_policyupdate(EVm, r_guess, inc, n_par, m_par, false)
+        EGM_policyupdate!(
+            c_n_star,
+            m_n_star,
+            EMU,
+            c_star_n,
+            m_star_n,
+            EVm,
+            r_guess,
+            inc,
+            n_par,
+            m_par,
+            false,
+        )
 
         # marginal value update step
-        
-        Vm_new   = mutil(c_n_star)  # Expected marginal utility at consumption policy (w &w/o adjustment)
-
-        # Calculate distance in updates
-        dist     = maximum(abs, invmutil(Vm_new) .- invmutil(Vm))
-
+        Vm_new = mutil(c_n_star, m_par)
+        invmutil!(iVm_new, Vm_new, m_par)
+        D .= iVm_new .- iVm
+        dist = maximum(abs, D)
 
         # update policy guess/marginal values of liquid/illiquid assets
-        Vm       = Vm_new
+        Vm .= Vm_new
+        iVm .= iVm_new
     end
-    # println("EGM Iterations: ", count)    
+    println("EGM Iterations: ", count)
+    println("EGM Dist: ", dist)
     #------------------------------------------------------
     # Find stationary distribution (Is direct transition better for large model?)
     #------------------------------------------------------
 
     # Define transition matrix
-    S_n, T_n, W_n    = MakeTransition(m_n_star, n_par.Π, n_par)
-    TransitionMat    = sparse(S_n, T_n, W_n, n_par.nm * n_par.ny, n_par.nm *  n_par.ny)
+    S_n, T_n, W_n = MakeTransition(m_n_star, n_par.Π, n_par)
+    Γ = sparse(S_n, T_n, W_n, n_par.nm * n_par.ny, n_par.nm * n_par.ny)
 
     # Calculate left-hand unit eigenvector
-    aux = real.(eigsolve(TransitionMat', 1)[2][1])
-    distr = reshape((aux[:]) ./ sum((aux[:])),  (n_par.nm, n_par.ny))
+    aux = real.(eigsolve(Γ', distr_guess[:], 1)[2][1])
+
+    ## Exploit that the Eigenvector of eigenvalue 1 is the nullspace of TransitionMat' -I
+    #     Q_T = LinearMap((dmu, mu) -> dist_change!(dmu, mu, Γ), n_par.nm * n_par.nk * n_par.ny, ismutating = true)
+    #     aux = fill(1/(n_par.nm * n_par.nk * n_par.ny), n_par.nm * n_par.nk * n_par.ny)#distr_guess[:] # can't use 0 as initial guess
+    #     gmres!(aux, Q_T, zeros(n_par.nm * n_par.nk * n_par.ny))  # i.e., solve x'(Γ-I) = 0 iteratively
+    ##qr algorithm for nullspace finding
+    #     aux2 = qr(Γ - I)
+    #     aux = Array{Float64}(undef, n_par.nm * n_par.nk * n_par.ny)
+    #     aux[aux2.prow] = aux2.Q[:,end]
+    #
+    distr = (reshape((aux[:]) ./ sum((aux[:])), (n_par.nm, n_par.ny)))
 
     #-----------------------------------------------------------------------------
     # Calculate capital stock
     #-----------------------------------------------------------------------------
-    
     K = sum(distr[:] .* n_par.mesh_m[:])
-    return K, TransitionMat, c_n_star, m_n_star, Vm, distr
+    return K, Γ, c_n_star, m_n_star, Vm, distr
 end

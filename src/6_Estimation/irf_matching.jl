@@ -1,9 +1,45 @@
-function irfmatch(par, IRFtargets, weights, shocks_selected, isstate, indexes_sel_vars, priors, sr, lr, m_par, e_set)
+function irfmatch(
+    par,
+    IRFtargets,
+    weights,
+    shocks_selected,
+    isstate,
+    indexes_sel_vars,
+    priors,
+    sr,
+    lr,
+    m_par,
+    e_set,
+)
 
-    return irfmatch_backend(par, IRFtargets, weights, shocks_selected, isstate, indexes_sel_vars, priors, sr, lr, m_par, e_set)
+    return irfmatch_backend(
+        par,
+        IRFtargets,
+        weights,
+        shocks_selected,
+        isstate,
+        indexes_sel_vars,
+        priors,
+        sr,
+        lr,
+        m_par,
+        e_set,
+    )
 end
 
-function irfmatch_backend(par, IRFtargets, weights, SHOCKs, isstate, indexes_sel_vars, priors, sr, lr, m_par, e_set)
+function irfmatch_backend(
+    par,
+    IRFtargets,
+    weights,
+    SHOCKs,
+    isstate,
+    indexes_sel_vars,
+    priors,
+    sr,
+    lr,
+    m_par,
+    e_set,
+)
 
     # check priors, abort if they are violated
     prior_like::eltype(par), alarm_prior::Bool = prioreval(Tuple(par), Tuple(priors))
@@ -22,7 +58,9 @@ function irfmatch_backend(par, IRFtargets, weights, SHOCKs, isstate, indexes_sel
 
         # solve model using candidate parameters
         # BLAS.set_num_threads(1)
-        State2Control::Array{eltype(par),2}, LOMstate::Array{eltype(par),2}, alarm_sgu::Bool = SGU_estim(sr, m_par, lr.A, lr.B; estim = true)
+        State2Control::Array{eltype(par),2},
+        LOMstate::Array{eltype(par),2},
+        alarm_sgu::Bool = LinearSolution_estim(sr, m_par, lr.A, lr.B; estim = true)
 
         # BLAS.set_num_threads(Threads.nthreads())
         if alarm_sgu # abort if model doesn't solve
@@ -32,22 +70,40 @@ function irfmatch_backend(par, IRFtargets, weights, SHOCKs, isstate, indexes_sel
                 println("Parameter try leads to inexistent or unstable equilibrium")
             end
         else
-                        
-            IRFs = compute_irfs(sr, State2Control, LOMstate, m_par, SHOCKs, indexes_sel_vars, isstate, e_set.irf_horizon)
-            IRFdist = (sum((IRFs[:] .- IRFtargets[:]).^2 .* weights[:]) )./2
+
+            IRFs = compute_irfs(
+                sr,
+                State2Control,
+                LOMstate,
+                m_par,
+                SHOCKs,
+                indexes_sel_vars,
+                isstate,
+                e_set.irf_horizon,
+            )
+            IRFdist = (sum((IRFs[:] .- IRFtargets[:]) .^ 2 .* weights[:])) ./ 2
             # println(sum((IRFs[:] .- IRFtargets[:]).^2))
         end
     end
 
-    return -IRFdist, prior_like, -IRFdist  .+ prior_like * e_set.prior_scale, alarm
+    return -IRFdist, prior_like, -IRFdist .+ prior_like * e_set.prior_scale, alarm
 
 end
 
-function compute_irfs(sr, State2Control, LOMstate, m_par, SHOCKs, indexes_sel_vars, isstate, irf_horizon)
+function compute_irfs(
+    sr,
+    State2Control,
+    LOMstate,
+    m_par,
+    SHOCKs,
+    indexes_sel_vars,
+    isstate,
+    irf_horizon,
+)
 
     n_vars = length(indexes_sel_vars)
-    n_shocks = length(SHOCKs)                
-    IRFs = Array{Float64}(undef, irf_horizon+1, n_vars, n_shocks)
+    n_shocks = length(SHOCKs)
+    IRFs = Array{Float64}(undef, irf_horizon + 1, n_vars, n_shocks)
     IRFsout = Array{Float64}(undef, irf_horizon, n_vars, n_shocks)
 
     shock_number = 0
@@ -62,8 +118,8 @@ function compute_irfs(sr, State2Control, LOMstate, m_par, SHOCKs, indexes_sel_va
             x[:] = LOMstate * x
         end
     end
-    IRFsout[:,isstate, :] .= IRFs[2:end, isstate, :] # IRFs for state variables represent end-of-period values
-    IRFsout[:,.~isstate, :] .= IRFs[1:end-1, .~isstate, :] # IRFs for state variables represent end-of-period values
+    IRFsout[:, isstate, :] .= IRFs[2:end, isstate, :] # IRFs for state variables represent end-of-period values
+    IRFsout[:, .~isstate, :] .= IRFs[1:end-1, .~isstate, :] # IRFs for state variables represent end-of-period values
 
     return IRFsout
 

@@ -11,6 +11,7 @@ function bin_search(x::Number, xx::AbstractVector)
     #												   ! N if value is to the right of grid
 
     N = length(xx)
+
     if x <= xx[1]
         j = 1
     elseif x >= xx[N]
@@ -18,10 +19,9 @@ function bin_search(x::Number, xx::AbstractVector)
     else
         jl = 1
         ju = N
-        while (ju-jl) != 1
-            jm = div((ju+jl),2)
-
-@inbounds   if x .> xx[jm]
+        while (ju - jl) != 1
+            jm = div((ju + jl), 2)
+            @inbounds if x .> xx[jm]
                 jl = jm
             else
                 ju = jm
@@ -29,6 +29,7 @@ function bin_search(x::Number, xx::AbstractVector)
         end
         j = jl
     end
+
 
     return j
 end
@@ -40,23 +41,22 @@ function exp_search(x::Number, xx::AbstractVector)
     # integer, intent(out)					:: j   ! returns j if xx(j)<x<xx(j+1),
     #												   ! 0 if value is to the left of grid,
     #												   ! N if value is to the right of grid
-@inbounds begin
+
     N = length(xx)
     if x <= xx[1]
         j = 1
     elseif x >= xx[N]
         j = N
     else
-        bound = 1
-        while bound < N && x>xx[bound]
-            bound *=2
+        bound = 2
+        @inbounds while bound < N && x > xx[bound]
+            bound *= 2
         end
-        jl = div(bound,2)
-        ju = min(N,bound)
-        while (ju-jl) != 1
-            jm = div((ju+jl),2)
-
-            if x .> xx[jm]
+        jl = div(bound, 2)
+        ju = min(N, bound)
+        while (ju - jl) != 1
+            jm = div((ju + jl), 2)
+            @inbounds if x .> xx[jm]
                 jl = jm
             else
                 ju = jm
@@ -64,6 +64,6 @@ function exp_search(x::Number, xx::AbstractVector)
         end
         j = jl
     end
-end
+
     return j
 end

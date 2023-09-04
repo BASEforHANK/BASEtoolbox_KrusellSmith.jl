@@ -6,26 +6,29 @@
 
 shock_names = [:Z]
 
-state_names = [
-    "Z","Nlag","Ilag","Clag","wlag"
-]
+state_names = ["Z", "Nlag", "Ilag", "Clag", "wlag"]
 
 # List cross-sectional controls / distributional summary variables (no equations in aggregate model expected)
-distr_names   = ["GiniC", "GiniX", "TOP10Ishare", "TOP10Wshare", "sdlogy"]
+distr_names = ["GiniC", "GiniW", "TOP10Ishare", "TOP10Wshare", "sdlogy"]
 
-control_names = [
-    "r", "w", "K", "Y" ,"C", "N", "I",
-    "Ngrowth", "Igrowth", "Cgrowth", "wgrowth"
-]
+control_names =
+    ["r", "w", "K", "Y", "C", "N", "I", "Ngrowth", "Igrowth", "Cgrowth", "wgrowth"]
 
 # All controls in one array
-control_names       = [distr_names; control_names]
+control_names = [distr_names; control_names]
 # All names in one array
-aggr_names          = [state_names; control_names]
+aggr_names = [state_names; control_names]
 
 # ascii names used for cases where unicode doesn't work, e.g., file saves
-unicode2ascii(x)    = replace.(replace.(replace.(replace.(replace.(x,"τ"=>"tau"), "σ" => "sigma"),"π"=>"pi"),"μ"=>"mu"),"ρ"=>"rho")
+unicode2ascii(x) =
+    replace.(
+        replace.(
+            replace.(replace.(replace.(x, "τ" => "tau"), "σ" => "sigma"), "π" => "pi"),
+            "μ" => "mu",
+        ),
+        "ρ" => "rho",
+    )
 
-state_names_ascii   = unicode2ascii(state_names)
+state_names_ascii = unicode2ascii(state_names)
 control_names_ascii = unicode2ascii(control_names)
-aggr_names_ascii    = [state_names_ascii; control_names_ascii]
+aggr_names_ascii = [state_names_ascii; control_names_ascii]

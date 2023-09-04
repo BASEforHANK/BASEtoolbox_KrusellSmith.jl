@@ -1,7 +1,7 @@
 # Set aggregate steady state variabel values
-ZSS       = 1.0
-ISS       = m_par.δ_0 * KSS
-CSS       = (YSS - m_par.δ_0 * KSS)
+ZSS = 1.0
+ISS = m_par.δ_0 * KSS
+CSS = (YSS - m_par.δ_0 * KSS)
 
 NlagSS = NSS
 wlagSS = wSS

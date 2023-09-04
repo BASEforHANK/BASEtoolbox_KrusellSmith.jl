@@ -22,7 +22,7 @@ function mode_finding_irf(sr, lr, m_par, e_set, par_start)
 
     # get names of estimated parameters and add measurement error params
     parnames = collect(fieldnameflatten(m_par))
-    
+
     # initialize parameters at starting values
     par = copy(par_start)
 
@@ -39,7 +39,7 @@ function mode_finding_irf(sr, lr, m_par, e_set, par_start)
         for i in data_names_temp
             name_temp = get(e_set.data_rename, i, :none)
             if name_temp != :none
-            rename!(Data_temp, Dict(i => name_temp))
+                rename!(Data_temp, Dict(i => name_temp))
             end
         end
 
@@ -55,7 +55,8 @@ function mode_finding_irf(sr, lr, m_par, e_set, par_start)
         end
 
         # Set up measurement error
-        meas_error, meas_error_prior, meas_error_std = measurement_error(Data, observed_vars, e_set)
+        meas_error, meas_error_prior, meas_error_std =
+            measurement_error(Data, observed_vars, e_set)
 
         if e_set.me_treatment != :fixed
             m_par = Flatten.reconstruct(m_par, par[1:length(par)-length(meas_error)])
@@ -69,24 +70,47 @@ function mode_finding_irf(sr, lr, m_par, e_set, par_start)
 
         # Optimization
         # Define objective function
-        Laux(pp)  = -likeli(pp, Data, Data_missing, H_sel, priors, meas_error, 
-                        meas_error_std, sr, lr, m_par, e_set)[3]
+        Laux(pp) =
+            -likeli(
+                pp,
+                Data,
+                Data_missing,
+                H_sel,
+                priors,
+                meas_error,
+                meas_error_std,
+                sr,
+                lr,
+                m_par,
+                e_set,
+            )[3]
 
- 
+
         # Code variant with box-constrained optimization, used for updating compression
 
-        OptOpt  = Optim.Options(show_trace = true, show_every = 20, store_trace = true, x_tol = e_set.x_tol,
-                                f_tol = e_set.f_tol, iterations = div(e_set.max_iter_mode, 10))
-        opti    = optimize(Laux, par_start , e_set.optimizer, OptOpt)
+        OptOpt = Optim.Options(
+            show_trace = true,
+            show_every = 20,
+            store_trace = true,
+            x_tol = e_set.x_tol,
+            f_tol = e_set.f_tol,
+            iterations = div(e_set.max_iter_mode, 10),
+        )
+        opti = optimize(Laux, par_start, e_set.optimizer, OptOpt)
         par_final = Optim.minimizer(opti)
         # Update estimated model parameters and resolve model
         if e_set.me_treatment != :fixed
-            m_par = Flatten.reconstruct(m_par, par_final[1:length(par_final)-length(meas_error)])
+            m_par = Flatten.reconstruct(
+                m_par,
+                par_final[1:length(par_final)-length(meas_error)],
+            )
         else
             m_par = Flatten.reconstruct(m_par, par_final)
         end
+        println(" ")
         println("updating model reduction after initial optimization")
-        @set! sr.n_par.further_compress = false 
+        println(" ")
+        @set! sr.n_par.further_compress = false
         sr_aux = model_reduction(sr, lr, m_par) # revert to full model
         lr_aux = update_model(sr_aux, lr, m_par) # solve full model
         @set! sr_aux.n_par.further_compress = true
@@ -100,26 +124,49 @@ function mode_finding_irf(sr, lr, m_par, e_set, par_start)
         end
 
         # Define closure of objective function
-        LL(pp)  = -likeli(pp, Data, Data_missing, H_sel, priors, meas_error, 
-                        meas_error_std, sr, lr, m_par, e_set)[3]
+        LL(pp) =
+            -likeli(
+                pp,
+                Data,
+                Data_missing,
+                H_sel,
+                priors,
+                meas_error,
+                meas_error_std,
+                sr,
+                lr,
+                m_par,
+                e_set,
+            )[3]
 
-        OptOpt  = Optim.Options(show_trace = true, show_every = 20, store_trace = true, x_tol = e_set.x_tol,
-                                f_tol = e_set.f_tol, iterations = e_set.max_iter_mode)
-        opti    = optimize(LL, Optim.minimizer(opti) , e_set.optimizer, OptOpt)
+        OptOpt = Optim.Options(
+            show_trace = true,
+            show_every = 20,
+            store_trace = true,
+            x_tol = e_set.x_tol,
+            f_tol = e_set.f_tol,
+            iterations = e_set.max_iter_mode,
+        )
+        opti = optimize(LL, Optim.minimizer(opti), e_set.optimizer, OptOpt)
         par_final = Optim.minimizer(opti)
-  
+
         # Update estimated model parameters and resolve model
         if e_set.me_treatment != :fixed
-            m_par = Flatten.reconstruct(m_par, par_final[1:length(par_final)-length(meas_error)])
+            m_par = Flatten.reconstruct(
+                m_par,
+                par_final[1:length(par_final)-length(meas_error)],
+            )
         else
             m_par = Flatten.reconstruct(m_par, par_final)
         end
         ll_old = -Optim.minimum(opti)
-        
+
         println("updating model reduction after mode finding finished")
-        @set! sr.n_par.further_compress = false 
+        println(" ")
+        @set! sr.n_par.further_compress = false
         sr_aux = model_reduction(sr, lr, m_par) # revert to full model
         lr_aux = update_model(sr_aux, lr, m_par) # solve full model
+        println(" ")
         println("new reduction")
         @set! sr_aux.n_par.further_compress = true
         sr = model_reduction(sr_aux, lr_aux, m_par) # update model reduction
@@ -130,37 +177,74 @@ function mode_finding_irf(sr, lr, m_par, e_set, par_start)
             H_sel[i, getfield(sr.indexes_r, (observed_vars[i]))] = 1.0
         end
 
-        LL_final(pp)  = -likeli(pp, Data, Data_missing, H_sel, priors, meas_error, 
-                                meas_error_std, sr, lr, m_par, e_set)[3]
-        
+        LL_final(pp) =
+            -likeli(
+                pp,
+                Data,
+                Data_missing,
+                H_sel,
+                priors,
+                meas_error,
+                meas_error_std,
+                sr,
+                lr,
+                m_par,
+                e_set,
+            )[3]
+
         posterior_mode = -LL_final(par_final)
         println("Likelihood at mode under ... reduction")
-        println("old: ",ll_old, " new: ", posterior_mode)
-        
+        println("old: ", ll_old, " new: ", posterior_mode)
+
         # Run Kalman smoother
-        smoother_output = likeli(par_final, Data, Data_missing, H_sel, priors,
-                                meas_error, meas_error_std, sr, lr, m_par, 
-                                e_set; smoother = true)
+        smoother_output = likeli(
+            par_final,
+            Data,
+            Data_missing,
+            H_sel,
+            priors,
+            meas_error,
+            meas_error_std,
+            sr,
+            lr,
+            m_par,
+            e_set;
+            smoother = true,
+        )
 
         # Compute Hessian at posterior mode
         if e_set.compute_hessian == true
             if sr.n_par.verbose
-            println("Computing Hessian. This might take a while...")
+                println("Computing Hessian. This might take a while...")
             end
-            func          = TwiceDifferentiable(pp -> LL_final(pp), par_final)
+            func = TwiceDifferentiable(pp -> LL_final(pp), par_final)
             hessian_final = Optim.hessian!(func, par_final)
-        else 
+        else
             if sr.n_par.verbose
-            println("Assuming Hessian is I...")
+                println("Assuming Hessian is I...")
             end
             hessian_final = Matrix{Float64}(I, length(par_final), length(par_final))
         end
 
         IRFtargets = []
         standard_errors = []
-        
-        return par_final, hessian_final, posterior_mode, meas_error, meas_error_std, parnames, 
-          Data, Data_missing, IRFtargets, standard_errors, H_sel, priors, smoother_output, m_par, sr, lr
+
+        return par_final,
+        hessian_final,
+        posterior_mode,
+        meas_error,
+        meas_error_std,
+        parnames,
+        Data,
+        Data_missing,
+        IRFtargets,
+        standard_errors,
+        H_sel,
+        priors,
+        smoother_output,
+        m_par,
+        sr,
+        lr
 
     elseif e_set.estimation_type == :irfmatching
         irf_horizon = e_set.irf_horizon
@@ -168,26 +252,43 @@ function mode_finding_irf(sr, lr, m_par, e_set, par_start)
         Data_temp = DataFrame(CSV.File(e_set.irfdata_file; missingstring = "NaN"))
         shock_names = Symbol.(unique(Data_temp[:, :shock]))
         shocks_selected = intersect(shock_names, e_set.shock_names)
-        select_variables = intersect(Symbol.(propertynames(Data_temp)), e_set.observed_vars_input)
-        
-        IRFtargets = Array{Float64}(undef, irf_horizon, length(select_variables),length(shocks_selected))
-        standard_errors = Array{Float64}(undef, irf_horizon, length(select_variables),length(shocks_selected))
+        select_variables =
+            intersect(Symbol.(propertynames(Data_temp)), e_set.observed_vars_input)
+
+        IRFtargets = Array{Float64}(
+            undef,
+            irf_horizon,
+            length(select_variables),
+            length(shocks_selected),
+        )
+        standard_errors = Array{Float64}(
+            undef,
+            irf_horizon,
+            length(select_variables),
+            length(shocks_selected),
+        )
         # standard_errors = ones(irf_horizon, length(select_variables),length(shocks_selected))
 
         counti = 0
         for i in shocks_selected
             counti += 1
-            countj  = 0
+            countj = 0
             for j in select_variables
                 countj += 1
-                IRFtargets[:, countj, counti] = Data_temp[(Data_temp[:, :pointdum] .== 1) .& (Symbol.(Data_temp[:, :shock]).==i), j]
-                standard_errors[:, countj, counti] = Data_temp[(Data_temp[:, :pointdum] .== 0) .& (Symbol.(Data_temp[:, :shock]).==i), j]
+                IRFtargets[:, countj, counti] = Data_temp[
+                    (Data_temp[:, :pointdum].==1).&(Symbol.(Data_temp[:, :shock]).==i),
+                    j,
+                ]
+                standard_errors[:, countj, counti] = Data_temp[
+                    (Data_temp[:, :pointdum].==0).&(Symbol.(Data_temp[:, :shock]).==i),
+                    j,
+                ]
             end
         end
-        IRFtargets=IRFtargets./maximum(Data_temp[:,:B])
-        standard_errors=standard_errors./maximum(Data_temp[:,:B])
+        IRFtargets = IRFtargets ./ maximum(Data_temp[:, :B])
+        standard_errors = standard_errors ./ maximum(Data_temp[:, :B])
 
-        weights = 1.0 ./ (standard_errors.^2)
+        weights = 1.0 ./ (standard_errors .^ 2)
         # weights = weights_temp ./ sum(weights_temp[:]) .* length(weights_temp[:])
         iter = 1
         indexes_sel_vars = []
@@ -199,20 +300,39 @@ function mode_finding_irf(sr, lr, m_par, e_set, par_start)
             iter += 1
             append!(indexes_sel_vars, getfield(sr.indexes_r, i))
         end
-    
+
         m_par = Flatten.reconstruct(m_par, par)
-        
+
         # Optimization
         # Define objective function
-        Lirfaux(pp)  = -irfmatch(pp, IRFtargets, weights, shocks_selected, isstate, indexes_sel_vars, priors, sr, lr, m_par, e_set)[3]
+        Lirfaux(pp) =
+            -irfmatch(
+                pp,
+                IRFtargets,
+                weights,
+                shocks_selected,
+                isstate,
+                indexes_sel_vars,
+                priors,
+                sr,
+                lr,
+                m_par,
+                e_set,
+            )[3]
 
         # Code variant with box-constrained optimization, used for updating compression
 
         # OptOpt  = Optim.Options(show_trace = true, show_every = 20, store_trace = true, x_tol = e_set.x_tol,
         #                         f_tol = e_set.f_tol, iterations = div(e_set.max_iter_mode, 10))
-        OptOpt  = Optim.Options(show_trace = true, show_every = 20, store_trace = true, x_tol = e_set.x_tol,
-        f_tol = e_set.f_tol, iterations = e_set.max_iter_mode)
-        opti    = optimize(Lirfaux, par_start , e_set.optimizer, OptOpt)
+        OptOpt = Optim.Options(
+            show_trace = true,
+            show_every = 20,
+            store_trace = true,
+            x_tol = e_set.x_tol,
+            f_tol = e_set.f_tol,
+            iterations = e_set.max_iter_mode,
+        )
+        opti = optimize(Lirfaux, par_start, e_set.optimizer, OptOpt)
         par_final = Optim.minimizer(opti)
         # Update estimated model parameters and resolve model
         # m_par = Flatten.reconstruct(m_par, par_final)
@@ -221,7 +341,7 @@ function mode_finding_irf(sr, lr, m_par, e_set, par_start)
         # @set! sr.n_par.further_compress = false 
         # sr_aux = model_reduction(sr, lr, m_par) # revert to full model
         # lr_aux = update_model(sr_aux, lr, m_par) # solve full model
-        
+
         # @set! sr_aux.n_par.further_compress = true
         # sr = model_reduction(sr_aux, lr_aux, m_par) # update model reduction
         # lr = update_model(sr, lr_aux, m_par)   # solve new reduced model
@@ -243,17 +363,19 @@ function mode_finding_irf(sr, lr, m_par, e_set, par_start)
         #                         f_tol = e_set.f_tol, iterations = e_set.max_iter_mode)
         # opti    = optimize(LLirf, Optim.minimizer(opti) , e_set.optimizer, OptOpt)
         # par_final = Optim.minimizer(opti)
-  
+
         # Update estimated model parameters and resolve model
-        
+
         m_par = Flatten.reconstruct(m_par, par_final)
         ll_old = -Optim.minimum(opti)
-        
+
         println("updating model reduction after mode finding finished")
-        @set! sr.n_par.further_compress = false 
+        println(" ")
+        @set! sr.n_par.further_compress = false
         sr_aux = model_reduction(sr, lr, m_par) # revert to full model
         lr_aux = update_model(sr_aux, lr, m_par) # solve full model
-        
+
+        println(" ")
         println("new reduction")
         @set! sr_aux.n_par.further_compress = true
         sr = model_reduction(sr_aux, lr_aux, m_par) # update model reduction
@@ -269,24 +391,37 @@ function mode_finding_irf(sr, lr, m_par, e_set, par_start)
             iter += 1
             append!(indexes_sel_vars, getfield(sr.indexes_r, i))
         end
-        
-        LLirf_final(pp)  = -irfmatch(pp, IRFtargets, weights, shocks_selected, isstate, indexes_sel_vars, priors, sr, lr, m_par, e_set)[3]
-        
+
+        LLirf_final(pp) =
+            -irfmatch(
+                pp,
+                IRFtargets,
+                weights,
+                shocks_selected,
+                isstate,
+                indexes_sel_vars,
+                priors,
+                sr,
+                lr,
+                m_par,
+                e_set,
+            )[3]
+
         posterior_mode = -LLirf_final(par_final)
         println("L2 under ... reduction")
-        println("old: ",ll_old, " new: ", posterior_mode)
+        println("old: ", ll_old, " new: ", posterior_mode)
 
 
         # Compute Hessian at posterior mode
         if e_set.compute_hessian == true
             if sr.n_par.verbose
-            println("Computing Hessian. This might take a while...")
+                println("Computing Hessian. This might take a while...")
             end
-            func          = TwiceDifferentiable(pp -> LLirf_final(pp), par_final)
+            func = TwiceDifferentiable(pp -> LLirf_final(pp), par_final)
             hessian_final = Optim.hessian!(func, par_final)
-        else 
+        else
             if sr.n_par.verbose
-            println("Assuming Hessian is I...")
+                println("Assuming Hessian is I...")
             end
             hessian_final = Matrix{Float64}(I, length(par_final), length(par_final))
         end
@@ -299,8 +434,22 @@ function mode_finding_irf(sr, lr, m_par, e_set, par_start)
         Data_missing = []
         # hessian_final = []
 
-        return par_final, hessian_final, posterior_mode, meas_error, meas_error_std, parnames, 
-            Data, Data_missing, IRFtargets, standard_errors, H_sel, priors, smoother_output, m_par, sr, lr
+        return par_final,
+        hessian_final,
+        posterior_mode,
+        meas_error,
+        meas_error_std,
+        parnames,
+        Data,
+        Data_missing,
+        IRFtargets,
+        standard_errors,
+        H_sel,
+        priors,
+        smoother_output,
+        m_par,
+        sr,
+        lr
 
     else
         error("estimation type not defined")

@@ -12,8 +12,14 @@ Requires global functions `employment(K,A,m_par)`, `interest(K,A,N,m_par)`,
 - `K_guess::Float64`: capital stock guess
 - `n_par::NumericalParameters`, `m_par::ModelParameters`
 """
-function Kdiff(K_guess::Float64, n_par::NumericalParameters, m_par::ModelParameters,
-    initial::Bool = true, Vm_guess::AbstractArray = zeros(1, 1), distr_guess::AbstractArray = zeros(1, 1, 1))
+function Kdiff(
+    K_guess::Float64,
+    n_par::NumericalParameters,
+    m_par::ModelParameters,
+    initial::Bool = true,
+    Vm_guess::AbstractArray = zeros(1, 1),
+    distr_guess::AbstractArray = zeros(1, 1),
+)
     #----------------------------------------------------------------------------
     # Calculate other prices from capital stock
     #----------------------------------------------------------------------------
@@ -22,10 +28,10 @@ function Kdiff(K_guess::Float64, n_par::NumericalParameters, m_par::ModelParamet
     # # inc[1] = labor income , inc[2] = rental income,
     # # inc[3]= liquid assets income, inc[4] = capital liquidation income
     # #----------------------------------------------------------------------------
-    N               = employment(K_guess, 1.0, m_par)
-    r               = interest(K_guess, 1.0, N, m_par) + 1.0 
-    w               = wage(K_guess, 1.0, N, m_par)
-    Y               = output(K_guess, 1.0, N, m_par)      
+    N = employment(K_guess, 1.0, m_par)
+    r = interest(K_guess, 1.0, N, m_par) + 1.0
+    w = wage(K_guess, 1.0, N, m_par)
+    Y = output(K_guess, 1.0, N, m_par)
 
     inc = incomes(n_par, m_par, r, w, N)
 
@@ -35,23 +41,23 @@ function Kdiff(K_guess::Float64, n_par::NumericalParameters, m_par::ModelParamet
 
     # initial guess consumption and marginal values (if not set)
     if initial
-        c_guess     = inc[1] .+  inc[2]
+        c_guess = inc[1] .+ inc[2]
         if any(any(c_guess .< 0.0))
             @warn "negative consumption guess"
         end
-        Vm          = r .* mutil(c_guess)
-        distr       = n_par.dist_guess
+        Vm = r .* mutil(c_guess, m_par)
+        distr = n_par.dist_guess
     else
-        Vm          = Vm_guess
-        distr       = distr_guess
+        Vm = Vm_guess
+        distr = distr_guess
     end
     #----------------------------------------------------------------------------
     # Calculate supply of funds for given prices
     #----------------------------------------------------------------------------
-    KS              = Ksupply(r, n_par, m_par, Vm, inc)
-    K               = KS[1]                               # capital
-    Vm              = KS[end-1]                                                 # marginal value of liquid assets
-    distr           = KS[end]                                                   # stationary distribution  
-    diff            = K - K_guess                                               # excess supply of funds
+    KS = Ksupply(r, n_par, m_par, Vm, distr, inc)
+    K = KS[1] # capital
+    Vm = KS[end-1] # marginal value of liquid assets
+    distr = KS[end] # stationary distribution  
+    diff = K - K_guess # excess supply of funds
     return diff, Vm, distr
 end

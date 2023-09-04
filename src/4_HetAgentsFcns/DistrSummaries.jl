@@ -19,72 +19,69 @@ income and wealth shares, and 10%, 50%, and 90%-consumption quantiles.
     liquid asset income, capital liquidation income,
     labor income (without scaling or labor union-profits)
 """
-function distrSummaries(distr::AbstractArray,
-                        c_n_star::AbstractArray, n_par::NumericalParameters,
-                        inc::AbstractArray, m_par::ModelParameters)
+function distrSummaries(
+    distr::AbstractArray,
+    c_n_star::AbstractArray,
+    n_par::NumericalParameters,
+    inc::AbstractArray,
+    m_par::ModelParameters,
+)
     ## Distributional summaries
-    distr_m = sum(distr,dims=2)[:]
-    distr_y = sum(distr,dims=1)[:]
+    distr_m = sum(distr, dims = 2)[:]
+    distr_y = sum(distr, dims = 1)[:]
 
-    money_pdf= distr_m
-    money_cdf= cumsum(money_pdf);
-    S               = [0; cumsum(money_pdf.*n_par.grid_m)]
-    giniwealth      = 1-(sum(money_pdf.*(S[1:end-1]+S[2:end]))/S[end]);
+    wealth = n_par.grid_m
+    wealth_pdf = copy(distr_m)
+    wealth_cdf = cumsum(wealth_pdf)
+    wealth_w = wealth_pdf .* wealth
+    wealthshares = cumsum(wealth_w) ./ sum(wealth_w)
 
-    FN_wealthshares = cumsum(n_par.grid_m.*money_pdf)./sum(n_par.grid_m.*money_pdf);
+    TOP10Wshare = 1.0 - mylinearinterpolate(wealth_cdf, wealthshares, [0.9])[1]
+    giniwealth = gini(wealth, wealth_pdf)
 
-    TOP10Wshare        = 1.0 - mylinearinterpolate(money_cdf,FN_wealthshares,[0.9])[1]
+    # Consumption distribution
+    x = c_n_star
+    aux_x = inc[3]
+    c = x + aux_x
+    distr_c = copy(distr)
 
+    # Gini of goods consumption
+    IX = sortperm(c[:])
+    c[:] .= c[IX]
+    distr_c[:] .= distr_c[IX]
+    giniconsumption = gini(c, distr_c)
 
-    distr_x         = zeros(eltype(c_n_star),(n_par.nm, n_par.ny))
-    x               = c_n_star;
-    aux_x           = inc[3]
-    aux_x[:,end]    = zeros(n_par.nm);
-    c               = x +aux_x;
-    distr_x         =  distr
+    # Top 10 gross income share
+    Yidio = inc[4] + inc[2] - n_par.mesh_m
+    IX = sortperm(Yidio[:])
+    Yidio = Yidio[IX]
+    Y_pdf = distr[IX]
+    Y_cdf = cumsum(Y_pdf)
+    Y_w = Y_pdf .* Yidio
+    incomeshares = cumsum(Y_w) ./ sum(Y_w)
+    TOP10Ishare = 1.0 .- mylinearinterpolate(Y_cdf, incomeshares, [0.9])[1]
 
-    IX              = sortperm(x[:]);
-    x               = x[IX];
-    x_pdf           = distr_x[IX];
-    S               = cumsum(x_pdf.*x);
-    S               = [0 S'];
-    ginicompconsumption = 1-(sum(x_pdf.*(S[1:end-1]+S[2:end]))/S[end]);
+    # Standard deviation of log labor earnings
+    Yidio = inc[4]
+    IX = sortperm(Yidio[:])
+    Yidio = Yidio[IX]
+    Y_pdf = distr[IX]
 
-    IX              = sortperm(c[:]);
-    c               = c[IX];
-    c_pdf           = distr_x[IX];
-    S               = cumsum(c_pdf.*c);
-    c_cdf           = cumsum(c_pdf);
-
-    S               = [0 S'];
-    giniconsumption = 1-(sum(c_pdf.*(S[1:end-1]+S[2:end]))/S[end]);
-
-
-    Yidio           = inc[4]+inc[2] - n_par.mesh_m
-    IX              = sortperm(Yidio[:])
-    Yidio           = Yidio[IX]
-    Y_pdf           = distr[IX]
-    Y_cdf           = cumsum(Y_pdf)
-    FN_incomeshares = cumsum(Yidio.*Y_pdf)./sum(Yidio.*Y_pdf);
-    TOP10Ishare        = 1.0 .- mylinearinterpolate(Y_cdf,FN_incomeshares,[0.9])[1]
-
-    S               = cumsum(Y_pdf.*Yidio)
-    S               = [0 S']
-    giniincome      = 1-(sum(Y_pdf.*(S[1:end-1]+S[2:end]))/S[end])
-
-    Yidio           = inc[4]
-    Yidio           = Yidio[:,1:end-1]
-    IX              = sortperm(Yidio[:])
-    Yidio           = Yidio[IX]
-    distr_aux       = distr[:,1:end-1]
-    distr_aux       = distr_aux./sum(distr_aux[:])
-    Y_pdf           = distr_aux[IX]
-    Y_cdf           = cumsum(Y_pdf)
-   
-    sdlogy          = sqrt(Y_pdf[:]'*log.(Yidio[:]).^2-(Y_pdf[:]'*log.(Yidio[:]))^2);
+    sdlogy = sqrt(dot(Y_pdf, Yidio .^ 2) .- dot(Y_pdf, Yidio) .^ 2)
 
 
+    return distr_m, distr_y, TOP10Wshare, TOP10Ishare, giniwealth, giniconsumption, sdlogy
+end
 
-    return     distr_m, distr_y,  TOP10Wshare, TOP10Ishare, giniwealth, ginicompconsumption,#=
-            =# giniconsumption, giniincome, sdlogy
+function gini(x, pdf)
+    s = 0.0
+    gini = 0.0
+    for i in eachindex(x)
+        gini -= pdf[i] * s
+        s += x[i] * pdf[i]
+        gini -= pdf[i] * s
+    end
+    gini /= s
+    gini += 1.0
+    return gini
 end
