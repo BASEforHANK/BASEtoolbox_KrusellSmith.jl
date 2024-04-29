@@ -3,13 +3,16 @@
 #------------------------------------------------------------------------------
 # ATTENTION: make sure that your present working directory pwd() is set to the folder
 # containing script.jl and BASEforHANK.jl. Otherwise adjust the load path.
-cd("./src")
+
 
 # pre-process user inputs for model setup
-include("3_NumericalBasics/PreprocessInputs.jl")
+cd("./src")
 
-push!(LOAD_PATH, pwd())
-using BASEforHANK
+
+include("Preprocessor/PreprocessInputs.jl")
+include("BASEforHANK.jl")
+using BenchmarkTools
+using .BASEforHANK
 
 # set BLAS threads to the number of Julia threads.
 # prevents BLAS from grabbing all threads on a machine
@@ -20,66 +23,31 @@ BASEforHANK.LinearAlgebra.BLAS.set_num_threads(Threads.nthreads())
 # that are retained 
 #------------------------------------------------------------------------------
 m_par = ModelParameters()
-priors = collect(metaflatten(m_par, prior)) # model parameters
-par_prior = mode.(priors)
-m_par = BASEforHANK.Flatten.reconstruct(m_par, par_prior)
+# priors = collect(metaflatten(m_par, prior)) # model parameters
+# par_prior = mode.(priors)
+# m_par = BASEforHANK.Flatten.reconstruct(m_par, par_prior)
 e_set = BASEforHANK.e_set;
 # alternatively, load estimated parameters by running, e.g.,
 # @load BASEforHANK.e_set.save_posterior_file par_final e_set
 # m_par = BASEforHANK.Flatten.reconstruct(m_par, par_final[1:length(par_final)-length(e_set.meas_error_input)])
 
-# Fix seed for random number generation
-BASEforHANK.Random.seed!(e_set.seed)
-
 ################################################################################
-# Comment in the following block to be able to go straight to plotting (comment out lines 40-53)
+# Comment in the following block to be able to go straight to plotting
 ################################################################################
-# @load "7_Saves/steadystate.jld2" sr_full
-# @load "7_Saves/linearresults.jld2" lr_full
-# @load "7_Saves/reduction.jld2" sr_reduc lr_reduc
-# @load BASEforHANK.e_set.save_posterior_file sr_mc lr_mc er_mc m_par_mc smoother_output
-# @set! e_set.estimate_model = false 
 
-# Calculate Steady State at prior mode 
-println("Calculating the steady state")
-ss_full = call_find_steadystate(m_par)
-# Find sparse DCT representation
-println("preparing the linearization")
-sr_full = call_prepare_linearization(ss_full, m_par)
-# COMPACT call of both of the above:
-# sr_full = compute_steadystate(m_par)
-
-jldsave("7_Saves/steadystate.jld2", true; sr_full) # true enables compression
-# @load "7_Saves/steadystate.jld2" sr_full
-
-#------------------------------------------------------------------------------
-# compute and display steady-state moments
-#------------------------------------------------------------------------------
-K = exp.(sr_full.XSS[sr_full.indexes.KSS])
-Y = exp.(sr_full.XSS[sr_full.indexes.YSS])
-T10W = exp(sr_full.XSS[sr_full.indexes.TOP10WshareSS])
-distr_m = sum(sr_full.distrSS, dims = (2))[:]
-
-println("Steady State Moments: ")
-println("Capital to Output Ratio: ", K / Y / 4.0)
-println("TOP 10 Wealth Share: ", T10W)
-
-# linearize the full model
+# Calculate Steady State at prior mode to find further compressed representation of Vm, Vk
+sr_full = compute_steadystate(m_par)
+jldsave("Output/Saves/steadystate.jld2", true; sr_full) # true enables compression
+# @load "Output/Saves/steadystate.jld2" sr_full
 lr_full = linearize_full_model(sr_full, m_par)
-jldsave("7_Saves/linearresults.jld2", true; lr_full)
-# @load "7_Saves/linearresults.jld2" lr_full
+jldsave("Output/Saves/linearresults.jld2", true; lr_full)
+# @load "Output/Saves/linearresults.jld2" lr_full
 
 # Find sparse state-space representation
 sr_reduc = model_reduction(sr_full, lr_full, m_par);
 lr_reduc = update_model(sr_reduc, lr_full, m_par)
-jldsave("7_Saves/reduction.jld2", true; sr_reduc, lr_reduc)
-# @load "7_Saves/reduction.jld2" sr_reduc lr_reduc
-
-# model timing
-println("One model solution takes")
-@set! sr_reduc.n_par.verbose = false
-BASEforHANK.@btime lr_reduc = update_model(sr_reduc, lr_full, m_par)
-@set! sr_reduc.n_par.verbose = true;
+jldsave("Output/Saves/reduction.jld2", true; sr_reduc, lr_reduc)
+# @load "Output/Saves/reduction.jld2" sr_reduc lr_reduc
 
 if e_set.estimate_model == true
 
@@ -145,8 +113,8 @@ if e_set.estimate_model == true
 
 end
 
-##############################################################################################
-# Graphical Model Output
+###############################################################################################
+# Graphical Model Output, functions not integrated in package
 ###############################################################################################
 using Plots,
     VegaLite,
@@ -160,16 +128,13 @@ using Plots,
     Colors
 
 # variables to be plotted
-select_variables = [:Igrowth, :Cgrowth, :wgrowth]
+select_variables = [:Y, :C, :I]
 
 
-# models to be plotted
-number_models = 1
-model_names = Array{String}(undef, 1, number_models)
-model_names[1] = "HANC"
+model_names = ["HANC"] # Displayed names of models to be compared
 
 # enter here the models, as tupel of tupels (sr, lr, e_set, m_par), to be compared
-models_tupel = ((sr_mode, lr_mode, e_set, m_par_mode),)
+models_tupel = ((sr_mc, lr_mc, e_set, m_par_mc),)
 
 timeline = collect(1954.75:0.25:2019.75)
 select_vd_horizons = [4 16 100] # horizons for variance decompositions
@@ -195,8 +160,8 @@ recessions_vec = [
 ] # US recession dates for plotting
 
 # "nice" names for labels
-nice_var_names = ["Investment growth", "Consumption growth", "Wage growth"]
-nice_s_names = ["TFP"]
+nice_var_names = ["Output", "Consumption", "Investment"]
+nice_s_names = ["TFP", "Delta"]
 
 # compute IRFs for all models in tupel, all variables in select_variables
 IRFs, VDs, SHOCKs, VD_bc_s = compute_irfs_vardecomp(models_tupel, select_variables)
@@ -224,7 +189,7 @@ DF_V_Decomp = plot_vardecomp(
     select_variables;
     savepdf = true,
     suffix = "_nolegend",
-    legend_switch = true,
+    legend_switch = false,
 )
 
 # produce historical contributions as Array and Data Frame and plot p
@@ -237,5 +202,5 @@ Historical_contrib_HA, DF_H_Decomp_HA, HD_plot_HA = compute_hist_decomp(
     select_variables,
     timeline;
     savepdf = true,
-    prefix = "HA_",
+    prefix = "HANC_",
 )
