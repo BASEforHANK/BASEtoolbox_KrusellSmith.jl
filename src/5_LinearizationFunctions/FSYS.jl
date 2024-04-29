@@ -154,7 +154,7 @@ function Fsys(
     c_n_star, m_n_star = EGM_policyupdate(EVmPrime, r, inc, n_par, m_par, false) # policy iteration (assume HH hold deposits)
 
     # Update marginal values
-    Vm_err = rPrime .* mutil(c_n_star, m_par)  # update expected marginal values time t
+    Vm_err = r .* mutil(c_n_star, m_par)  # update expected marginal values time t
 
     # Update distribution
     dist_aux = DirectTransition(m_n_star, PDF_joint, n_par.Π, n_par)
