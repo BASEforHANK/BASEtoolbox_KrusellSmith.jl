@@ -10,9 +10,10 @@
 
 module BASEforHANK
 
-if !Sys.isapple() # issues encountered when using mkl with macos + more than 1 thread
+if !Sys.iswindows() && !Sys.isapple() # issues encountered when using mkl with macos + more than 1 thread
     using MKL
 end
+
 
 using LinearAlgebra,
     JLD2, FileIO, Setfield, Flatten, Distributions, Random, FieldMetadata, MCMCChains
